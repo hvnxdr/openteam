@@ -10,10 +10,15 @@
       "bun": "./src/index.ts",
       "default": "./dist/index.mjs"
     },
+    "./effect": {
+      "types": "./src/effect.ts",
+      "bun": "./src/effect.ts",
+      "default": "./dist/effect.mjs"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "vp pack src/index.ts --dts --format esm",
+    "build": "vp pack src/index.ts src/effect.ts --dts --format esm",
     "check": "vp check",
     "test": "bun test",
     "typecheck": "vp exec tsc -p tsconfig.json --noEmit && vp exec tsc -p tsconfig.test.json --noEmit"

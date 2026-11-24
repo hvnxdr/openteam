@@ -11,18 +11,29 @@ import {
 } from "@openteam/contracts";
 import { Schema } from "effect";
 
+export { connectEvents } from "./browser-events.ts";
 export type {
+  EventConnection,
+  EventConnectionError,
+  EventConnectionOptions,
+  EventConnectionState,
+} from "./browser-events.ts";
+
+export {
   BadRequest,
+  IdempotencyConflict,
+  ServiceUnavailable,
+  TransportError,
+} from "@openteam/contracts";
+export type {
   CreateProbeRequest,
   CreateProbeResponse,
+  FoundationEvent,
   HealthResponse,
-  IdempotencyConflict,
   ListProbesRequest,
   ListProbesResponse,
   OpenTeamError,
   ProbeSummary,
-  ServiceUnavailable,
-  TransportError,
 } from "@openteam/contracts";
 
 /** Default transport used by the browser-safe Promise client. */

@@ -7,7 +7,7 @@ import {
   ListProbesResponse,
   ServiceUnavailable,
 } from "@openteam/contracts";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import {
   HttpApi,
   HttpApiBuilder,
@@ -20,6 +20,7 @@ import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
 import { SqlClient } from "effect/sql";
 import type { ServerConfig } from "./config.ts";
 import { sqliteLayer } from "./db/sqlite.ts";
+import { EventStore, OpenTeamSseEvent } from "./events.ts";
 import { SCHEMA_ARTIFACT_HASH, SCHEMA_VERSION } from "./operations/upgrade.ts";
 import { DEFAULT_PROBE_PAGE_LIMIT, MAX_PROBE_PAGE_LIMIT, ProbeStore } from "./probes.ts";
 
@@ -34,9 +35,22 @@ export class SchemaCompatibilityError extends Schema.TaggedError<SchemaCompatibi
 ) {}
 
 const IdempotencyKey = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(200));
+const EventCursor = Schema.String.check(Schema.isPattern(/^evt_[1-9]\d*$/));
 const ProbePageLimit = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isBetween({ minimum: 1, maximum: MAX_PROBE_PAGE_LIMIT }),
+);
+
+const EventsSuccess = HttpApiSchema.WithHeaders(
+  HttpApiSchema.StreamSse({
+    events: OpenTeamSseEvent,
+    error: ServiceUnavailable,
+    keepAlive: "1 second",
+  }),
+  {
+    "cache-control": Schema.Literal("no-store"),
+    "x-accel-buffering": Schema.Literal("no"),
+  },
 );
 
 class SchemaErrorMiddleware extends HttpApiMiddleware.Service<SchemaErrorMiddleware>()(
@@ -73,6 +87,14 @@ const HealthGroup = HttpApiGroup.make("foundation").add(
       ServiceUnavailable.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(503)),
     ],
   }),
+  HttpApiEndpoint.get("events", "/v1/events", {
+    headers: { "last-event-id": Schema.optional(Schema.String) },
+    success: EventsSuccess,
+    error: [
+      BadRequest.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(400)),
+      ServiceUnavailable.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(503)),
+    ],
+  }),
 );
 
 const Api = HttpApi.make("openteam").add(HealthGroup).middleware(SchemaErrorMiddleware);
@@ -88,6 +110,18 @@ const SchemaErrorLayer = HttpApiMiddleware.layerSchemaErrorTransform(
       }),
     ),
 );
+
+function parseEventCursor(cursor: string | undefined) {
+  if (cursor === undefined) {
+    return 0;
+  }
+  return Option.getOrUndefined(
+    Option.map(Schema.decodeUnknownOption(EventCursor)(cursor), (value) => {
+      const seq = Number(value.slice("evt_".length));
+      return Number.isSafeInteger(seq) ? seq : undefined;
+    }),
+  );
+}
 
 export function assertSchemaCompatible(sql: SqlClient.SqlClient) {
   return Effect.gen(function* () {
@@ -117,6 +151,7 @@ const Handlers = HttpApiBuilder.group(
   "foundation",
   Effect.fn(function* (handlers) {
     const store = yield* ProbeStore;
+    const eventStore = yield* EventStore;
     return handlers.handleAll({
       health: () =>
         Effect.gen(function* () {
@@ -138,6 +173,21 @@ const Handlers = HttpApiBuilder.group(
           limit: query.limit ?? DEFAULT_PROBE_PAGE_LIMIT,
           cursor: query.cursor,
         }),
+      events: ({ headers }) =>
+        Effect.gen(function* () {
+          const cursor = headers["last-event-id"];
+          const afterSeq = parseEventCursor(cursor);
+          if (cursor !== undefined && afterSeq === undefined) {
+            return yield* new BadRequest({
+              code: "invalid_cursor",
+              message: "The Event cursor is invalid.",
+            });
+          }
+          return HttpApiSchema.withHeaders({
+            body: eventStore.stream(afterSeq ?? 0),
+            headers: { "cache-control": "no-store", "x-accel-buffering": "no" } as const,
+          });
+        }),
     });
   }),
 );
@@ -146,8 +196,9 @@ export function makeHttpServerLayer<A, E>(
   config: ServerConfig,
   platform: Layer.Layer<HttpServer.HttpServer | A, E>,
 ) {
-  const services = Layer.merge(
+  const services = Layer.mergeAll(
     ProbeStore.layer,
+    EventStore.layer,
     Layer.effectDiscard(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;

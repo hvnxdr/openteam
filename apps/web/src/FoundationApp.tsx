@@ -6,8 +6,14 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import { useState } from "react";
-import type { createClient, HealthResponse, ProbeSummary } from "@openteam/client";
+import { useEffect, useState } from "react";
+import {
+  connectEvents,
+  type createClient,
+  type EventConnectionState,
+  type HealthResponse,
+  type ProbeSummary,
+} from "@openteam/client";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -36,6 +42,46 @@ export function FoundationApp({ client }: FoundationAppProps) {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
+  );
+}
+
+export type EventConnectionViewProps = {
+  readonly state: EventConnectionState;
+};
+
+export function EventConnectionView({ state }: EventConnectionViewProps) {
+  if (state.status === "connecting") {
+    return (
+      <p role="status" aria-live="polite">
+        Connecting to the Event stream…
+      </p>
+    );
+  }
+  if (state.status === "disconnected") {
+    return (
+      <p role="status" aria-live="polite">
+        Event stream disconnected.
+      </p>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div role="alert">
+        <p>Event stream unavailable. {state.error.message}</p>
+      </div>
+    );
+  }
+  return (
+    <p role="status" aria-live="polite">
+      Event stream connected. {`Events replayed/received: ${state.replayed}.`}{" "}
+      {state.lastCursor === undefined ? (
+        "No Events received yet."
+      ) : (
+        <>
+          Last Event cursor: <code>{state.lastCursor}</code>
+        </>
+      )}
+    </p>
   );
 }
 
@@ -107,8 +153,30 @@ export function HealthView(props: HealthViewProps) {
   );
 }
 
+function useEventConnection(client: OpenTeamClient) {
+  const [state, setState] = useState<EventConnectionState>({ status: "connecting" });
+  useEffect(() => {
+    let active = true;
+    const connection = connectEvents({
+      baseUrl: client.baseUrl,
+      fetch: client.fetch,
+      onState: (next) => {
+        if (active) {
+          setState(next);
+        }
+      },
+    });
+    return () => {
+      active = false;
+      connection.close();
+    };
+  }, [client]);
+  return state;
+}
+
 function FoundationRoute() {
   const { client } = indexRoute.useRouteContext();
+  const eventConnection = useEventConnection(client);
   const health = useQuery({
     queryKey: ["health"],
     queryFn: () => client.health(),
@@ -131,6 +199,10 @@ function FoundationRoute() {
       ) : (
         <HealthView state="success" health={health.data} />
       )}
+      <section aria-labelledby="event-synchronization-heading">
+        <h2 id="event-synchronization-heading">Event synchronization</h2>
+        <EventConnectionView state={eventConnection} />
+      </section>
       <section aria-labelledby="foundation-probes-heading">
         <h2 id="foundation-probes-heading">Foundation probes</h2>
         {probes.isPending ? (

@@ -1,8 +1,37 @@
 /// <reference types="bun" />
 
 import { describe, expect, test } from "bun:test";
+import { TransportError } from "@openteam/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { HealthView, ProbeListView } from "../src/FoundationApp.tsx";
+import { HealthView, EventConnectionView, ProbeListView } from "../src/FoundationApp.tsx";
+
+describe("foundation Event connection view", () => {
+  test("shows connected, replay count, and last cursor state", () => {
+    const html = renderToStaticMarkup(
+      <EventConnectionView state={{ status: "connected", replayed: 2, lastCursor: "evt_2" }} />,
+    );
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain("Event stream connected");
+    expect(html).toContain("Events replayed/received: 2");
+    expect(html).toContain("Last Event cursor");
+    expect(html).toContain("evt_2");
+  });
+
+  test("shows a typed connection error without rendering a blank page", () => {
+    const html = renderToStaticMarkup(
+      <EventConnectionView
+        state={{
+          status: "error",
+          error: new TransportError({ message: "Unable to connect" }),
+        }}
+      />,
+    );
+
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Event stream unavailable");
+  });
+});
 
 describe("foundation probe list view", () => {
   test("shows an accessible error with retry", () => {
