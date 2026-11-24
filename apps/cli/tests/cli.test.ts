@@ -55,7 +55,7 @@ describe("openteam upgrade", () => {
     const database = new Database(join(dataDir, "openteam.db"));
     const rows = database.query("SELECT version FROM schema_version").all();
     database.close();
-    expect(rows).toEqual([{ version: "0000" }]);
+    expect(rows).toEqual([{ version: "0000" }, { version: "0001" }]);
     expect(await Bun.file(join(environmentDirectory, "openteam.db")).exists()).toBe(false);
   });
 });

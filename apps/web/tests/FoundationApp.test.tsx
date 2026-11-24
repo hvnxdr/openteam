@@ -2,7 +2,50 @@
 
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { HealthView } from "../src/FoundationApp.tsx";
+import { HealthView, ProbeListView } from "../src/FoundationApp.tsx";
+
+describe("foundation probe list view", () => {
+  test("shows an accessible error with retry", () => {
+    const html = renderToStaticMarkup(<ProbeListView state="error" retry={() => {}} />);
+
+    expect(html).toContain('role="alert"');
+    expect(html).toContain("Foundation probes are unavailable");
+    expect(html).toContain("Try again");
+  });
+
+  test("renders server-backed probes without write controls", () => {
+    const html = renderToStaticMarkup(
+      <ProbeListView
+        state="success"
+        probes={[
+          {
+            id: "prb_01JABC",
+            message: "Foundation probe",
+            createdAt: "2026-11-24T09:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    expect(html).toContain("Foundation probe");
+    expect(html).toContain("<ul");
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain("<button");
+  });
+
+  test("shows an explicit empty state", () => {
+    const html = renderToStaticMarkup(<ProbeListView state="success" probes={[]} />);
+
+    expect(html).toContain("No foundation probes yet");
+  });
+
+  test("announces loading accessibly", () => {
+    const html = renderToStaticMarkup(<ProbeListView state="loading" />);
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain("Loading foundation probes");
+  });
+});
 
 describe("foundation health view", () => {
   test("announces loading accessibly", () => {

@@ -1,17 +1,27 @@
-import { HealthResponse, ServiceUnavailable } from "@openteam/contracts";
+import {
+  BadRequest,
+  CreateProbeRequest,
+  CreateProbeResponse,
+  HealthResponse,
+  IdempotencyConflict,
+  ListProbesResponse,
+  ServiceUnavailable,
+} from "@openteam/contracts";
 import { Effect, Layer, Schema } from "effect";
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
+  HttpApiMiddleware,
   HttpApiSchema,
 } from "effect/http-api";
-import { HttpRouter, HttpServer } from "effect/http";
+import { HttpRouter, HttpServer, HttpServerResponse } from "effect/http";
 import { SqlClient } from "effect/sql";
 import type { ServerConfig } from "./config.ts";
 import { sqliteLayer } from "./db/sqlite.ts";
 import { SCHEMA_ARTIFACT_HASH, SCHEMA_VERSION } from "./operations/upgrade.ts";
+import { DEFAULT_PROBE_PAGE_LIMIT, MAX_PROBE_PAGE_LIMIT, ProbeStore } from "./probes.ts";
 
 export const SERVER_VERSION = "0.0.0";
 
@@ -23,14 +33,61 @@ export class SchemaCompatibilityError extends Schema.TaggedError<SchemaCompatibi
   },
 ) {}
 
+const IdempotencyKey = Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(200));
+const ProbePageLimit = Schema.NumberFromString.check(
+  Schema.isInt(),
+  Schema.isBetween({ minimum: 1, maximum: MAX_PROBE_PAGE_LIMIT }),
+);
+
+class SchemaErrorMiddleware extends HttpApiMiddleware.Service<SchemaErrorMiddleware>()(
+  "openteam/SchemaErrorMiddleware",
+  { error: BadRequest },
+) {}
+
 const HealthGroup = HttpApiGroup.make("foundation").add(
   HttpApiEndpoint.get("health", "/v1/health", {
     success: HealthResponse.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(200)),
     error: ServiceUnavailable.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(503)),
   }),
+  HttpApiEndpoint.post("createProbe", "/v1/foundation/probes", {
+    headers: { "idempotency-key": IdempotencyKey },
+    payload: CreateProbeRequest,
+    success: [
+      CreateProbeResponse.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(201)),
+      CreateProbeResponse.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(200)),
+    ],
+    error: [
+      BadRequest.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(400)),
+      IdempotencyConflict.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(409)),
+      ServiceUnavailable.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(503)),
+    ],
+  }),
+  HttpApiEndpoint.get("listProbes", "/v1/foundation/probes", {
+    query: {
+      limit: Schema.optional(ProbePageLimit),
+      cursor: Schema.optional(Schema.String),
+    },
+    success: ListProbesResponse.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(200)),
+    error: [
+      BadRequest.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(400)),
+      ServiceUnavailable.pipe(HttpApiSchema.asJson(), HttpApiSchema.status(503)),
+    ],
+  }),
 );
 
-const Api = HttpApi.make("openteam").add(HealthGroup);
+const Api = HttpApi.make("openteam").add(HealthGroup).middleware(SchemaErrorMiddleware);
+
+const SchemaErrorLayer = HttpApiMiddleware.layerSchemaErrorTransform(
+  SchemaErrorMiddleware,
+  (error) =>
+    Effect.fail(
+      new BadRequest({
+        code: error.kind === "Headers" ? "idempotency_key_required" : "invalid_request",
+        message: "The request is invalid.",
+        details: { component: error.kind },
+      }),
+    ),
+);
 
 export function assertSchemaCompatible(sql: SqlClient.SqlClient) {
   return Effect.gen(function* () {
@@ -55,37 +112,53 @@ export function assertSchemaCompatible(sql: SqlClient.SqlClient) {
   });
 }
 
-const Handlers = HttpApiBuilder.group(Api, "foundation", (handlers) =>
-  handlers.handleAll({
-    health: () =>
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`SELECT version FROM schema_version LIMIT 1`;
-        return { status: "ok", version: SERVER_VERSION } as const;
-      }).pipe(
-        Effect.catch(
-          () =>
-            new ServiceUnavailable({
-              code: "database_unavailable",
-              message: "The database is unavailable.",
-            }),
-        ),
-      ),
+const Handlers = HttpApiBuilder.group(
+  Api,
+  "foundation",
+  Effect.fn(function* (handlers) {
+    const store = yield* ProbeStore;
+    return handlers.handleAll({
+      health: () =>
+        Effect.gen(function* () {
+          yield* store.health();
+          return { status: "ok", version: SERVER_VERSION } as const;
+        }),
+      createProbe: ({ headers, payload }) =>
+        Effect.gen(function* () {
+          const result = yield* store.create({
+            ...payload,
+            idempotencyKey: headers["idempotency-key"],
+          });
+          return yield* HttpServerResponse.schemaJson(CreateProbeResponse)(result.response, {
+            status: result.retried ? 200 : 201,
+          }).pipe(Effect.orDie);
+        }),
+      listProbes: ({ query }) =>
+        store.list({
+          limit: query.limit ?? DEFAULT_PROBE_PAGE_LIMIT,
+          cursor: query.cursor,
+        }),
+    });
   }),
 );
-
-const Routes = HttpApiBuilder.layer(Api).pipe(Layer.provide(Handlers));
 
 export function makeHttpServerLayer<A, E>(
   config: ServerConfig,
   platform: Layer.Layer<HttpServer.HttpServer | A, E>,
 ) {
-  const database = Layer.effectDiscard(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* assertSchemaCompatible(sql);
-    }),
-  ).pipe(Layer.provideMerge(sqliteLayer(config.databasePath, false)));
+  const services = Layer.merge(
+    ProbeStore.layer,
+    Layer.effectDiscard(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* assertSchemaCompatible(sql);
+      }),
+    ),
+  ).pipe(Layer.provide(sqliteLayer(config.databasePath, false)));
+  const Routes = HttpApiBuilder.layer(Api).pipe(
+    Layer.provide(Handlers.pipe(Layer.provide(services))),
+    Layer.provide(SchemaErrorLayer),
+  );
 
-  return HttpRouter.serve(Routes).pipe(Layer.provide(database), Layer.provideMerge(platform));
+  return HttpRouter.serve(Routes).pipe(Layer.provideMerge(platform));
 }

@@ -67,6 +67,7 @@ describe("server startup", () => {
     const dataDir = await makeDataDirectory();
     await Effect.runPromise(runUpgrade({ dataDir }));
     const database = new Database(join(dataDir, "openteam.db"));
+    database.run("DELETE FROM schema_version WHERE version = '0001'");
     database.run("UPDATE schema_version SET version = 'outdated', artifact_hash = 'outdated'");
     database.close();
 

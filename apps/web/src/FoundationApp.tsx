@@ -7,7 +7,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { useState } from "react";
-import type { createClient, HealthResponse } from "@openteam/client";
+import type { createClient, HealthResponse, ProbeSummary } from "@openteam/client";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -36,6 +36,44 @@ export function FoundationApp({ client }: FoundationAppProps) {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
+  );
+}
+
+export type ProbeListViewProps =
+  | { readonly state: "loading" }
+  | { readonly state: "error"; readonly retry: () => void }
+  | { readonly state: "success"; readonly probes: ReadonlyArray<ProbeSummary> };
+
+export function ProbeListView(props: ProbeListViewProps) {
+  if (props.state === "loading") {
+    return (
+      <p role="status" aria-live="polite">
+        Loading foundation probes…
+      </p>
+    );
+  }
+  if (props.state === "error") {
+    return (
+      <div role="alert">
+        <p>Foundation probes are unavailable.</p>
+        <button type="button" onClick={props.retry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (props.probes.length === 0) {
+    return <p>No foundation probes yet.</p>;
+  }
+  return (
+    <ul aria-label="Foundation probes">
+      {props.probes.map((probe) => (
+        <li key={probe.id}>
+          <p>{probe.message}</p>
+          <time dateTime={probe.createdAt}>{probe.createdAt}</time>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -76,6 +114,11 @@ function FoundationRoute() {
     queryFn: () => client.health(),
     retry: 1,
   });
+  const probes = useQuery({
+    queryKey: ["foundation", "probes"],
+    queryFn: () => client.listProbes({ limit: 20 }),
+    retry: 1,
+  });
 
   return (
     <main>
@@ -88,6 +131,16 @@ function FoundationRoute() {
       ) : (
         <HealthView state="success" health={health.data} />
       )}
+      <section aria-labelledby="foundation-probes-heading">
+        <h2 id="foundation-probes-heading">Foundation probes</h2>
+        {probes.isPending ? (
+          <ProbeListView state="loading" />
+        ) : probes.isError ? (
+          <ProbeListView state="error" retry={() => void probes.refetch()} />
+        ) : (
+          <ProbeListView state="success" probes={probes.data.probes} />
+        )}
+      </section>
     </main>
   );
 }

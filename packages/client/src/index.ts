@@ -1,9 +1,26 @@
-import { HealthResponse, ServiceUnavailable, TransportError } from "@openteam/contracts";
+import {
+  BadRequest,
+  CreateProbeRequest,
+  CreateProbeResponse,
+  HealthResponse,
+  IdempotencyConflict,
+  ListProbesRequest,
+  ListProbesResponse,
+  ServiceUnavailable,
+  TransportError,
+} from "@openteam/contracts";
 import { Schema } from "effect";
 
 export type {
+  BadRequest,
+  CreateProbeRequest,
+  CreateProbeResponse,
   HealthResponse,
+  IdempotencyConflict,
+  ListProbesRequest,
+  ListProbesResponse,
   OpenTeamError,
+  ProbeSummary,
   ServiceUnavailable,
   TransportError,
 } from "@openteam/contracts";
@@ -24,6 +41,100 @@ export function createClient(options: ClientOptions = {}) {
   return {
     baseUrl,
     fetch,
+    async createProbe(input: { readonly message: string; readonly idempotencyKey: string }) {
+      const payload = Schema.encodeUnknownSync(CreateProbeRequest)({ message: input.message });
+      let response: Response;
+      try {
+        response = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/foundation/probes`, {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "Idempotency-Key": input.idempotencyKey,
+          },
+          body: JSON.stringify(payload),
+        });
+      } catch (cause) {
+        throw new TransportError({ message: "Unable to reach the OpenTeam server", cause });
+      }
+      try {
+        const body: unknown = await response.json();
+        if (response.status === 400) {
+          throw Schema.decodeUnknownSync(BadRequest)(body);
+        }
+        if (response.status === 409) {
+          throw Schema.decodeUnknownSync(IdempotencyConflict)(body);
+        }
+        if (response.status === 503) {
+          throw Schema.decodeUnknownSync(ServiceUnavailable)(body);
+        }
+        if (response.status === 200 || response.status === 201) {
+          return Schema.decodeUnknownSync(CreateProbeResponse)(body);
+        }
+        throw new TransportError({
+          message: `OpenTeam returned unexpected HTTP status ${response.status}`,
+        });
+      } catch (cause) {
+        if (
+          cause instanceof BadRequest ||
+          cause instanceof IdempotencyConflict ||
+          cause instanceof ServiceUnavailable ||
+          cause instanceof TransportError
+        ) {
+          throw cause;
+        }
+        throw new TransportError({
+          message: "OpenTeam returned an invalid create response",
+          cause,
+        });
+      }
+    },
+    async listProbes(options: ListProbesRequest = {}) {
+      const request = Schema.encodeUnknownSync(ListProbesRequest)(options);
+      const query = new URLSearchParams();
+      if (request.limit !== undefined) {
+        query.set("limit", String(request.limit));
+      }
+      if (request.cursor !== undefined) {
+        query.set("cursor", request.cursor);
+      }
+      const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+      let response: Response;
+      try {
+        response = await fetch(`${baseUrl.replace(/\/+$/, "")}/v1/foundation/probes${suffix}`, {
+          headers: { Accept: "application/json" },
+        });
+      } catch (cause) {
+        throw new TransportError({ message: "Unable to reach the OpenTeam server", cause });
+      }
+      try {
+        const body: unknown = await response.json();
+        if (response.status === 400) {
+          throw Schema.decodeUnknownSync(BadRequest)(body);
+        }
+        if (response.status === 503) {
+          throw Schema.decodeUnknownSync(ServiceUnavailable)(body);
+        }
+        if (response.status === 200) {
+          return Schema.decodeUnknownSync(ListProbesResponse)(body);
+        }
+        throw new TransportError({
+          message: `OpenTeam returned unexpected HTTP status ${response.status}`,
+        });
+      } catch (cause) {
+        if (
+          cause instanceof BadRequest ||
+          cause instanceof ServiceUnavailable ||
+          cause instanceof TransportError
+        ) {
+          throw cause;
+        }
+        throw new TransportError({
+          message: "OpenTeam returned an invalid list response",
+          cause,
+        });
+      }
+    },
     async health() {
       let response: Response;
       try {
