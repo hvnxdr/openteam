@@ -1,0 +1,25 @@
+{
+  "name": "@openteam/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Schema-only contracts shared by OpenTeam applications and clients.",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack src/index.ts --dts --format esm",
+    "check": "vp check",
+    "test": "bun test",
+    "typecheck": "vp exec tsc -p tsconfig.json --noEmit && vp exec tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
