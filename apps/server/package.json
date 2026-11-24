@@ -4,6 +4,16 @@
   "private": true,
   "description": "OpenTeam server runtime.",
   "type": "module",
+  "exports": {
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "bun": "./src/runtime.ts"
+    },
+    "./upgrade": {
+      "types": "./src/operations/upgrade.ts",
+      "bun": "./src/operations/upgrade.ts"
+    }
+  },
   "scripts": {
     "build": "bun build src/index.ts src/upgrade.ts --target=bun --outdir dist",
     "generate": "drizzle-kit generate",

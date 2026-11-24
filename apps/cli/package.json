@@ -18,6 +18,7 @@
     "@effect/platform-bun": "catalog:",
     "@openteam/client": "workspace:*",
     "@openteam/contracts": "workspace:*",
+    "@openteam/server": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

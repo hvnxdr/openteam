@@ -16,6 +16,7 @@
     "isolatedModules": true,
     "erasableSyntaxOnly": true,
     "resolveJsonModule": true,
+    "allowArbitraryExtensions": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "noEmit": true

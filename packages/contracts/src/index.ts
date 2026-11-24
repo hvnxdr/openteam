@@ -1,5 +1,21 @@
 import { Schema } from "effect";
 
+export const HealthResponse = Schema.Struct({
+  status: Schema.Literal("ok"),
+  version: Schema.String,
+});
+
+export type HealthResponse = typeof HealthResponse.Type;
+
+export class ServiceUnavailable extends Schema.TaggedError<ServiceUnavailable>()(
+  "ServiceUnavailable",
+  {
+    code: Schema.Literal("database_unavailable"),
+    message: Schema.String,
+    details: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 /**
  * Shared OpenTeam wire contracts.
  *

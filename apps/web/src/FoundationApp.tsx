@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import {
   createRootRoute,
   createRoute,
@@ -6,7 +6,8 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
-import type { createClient } from "@openteam/client";
+import { useState } from "react";
+import type { createClient, HealthResponse } from "@openteam/client";
 
 const rootRoute = createRootRoute({ component: Outlet });
 
@@ -16,16 +17,20 @@ const indexRoute = createRoute({
   component: FoundationRoute,
 });
 
+type OpenTeamClient = ReturnType<typeof createClient>;
+
 export interface FoundationAppProps {
-  client: Pick<ReturnType<typeof createClient>, "baseUrl">;
+  client: OpenTeamClient;
 }
 
 export function FoundationApp({ client }: FoundationAppProps) {
-  const queryClient = new QueryClient();
-  const router = createRouter({
-    routeTree: rootRoute.addChildren([indexRoute]),
-    context: { client },
-  });
+  const [queryClient] = useState(() => new QueryClient());
+  const [router] = useState(() =>
+    createRouter({
+      routeTree: rootRoute.addChildren([indexRoute]),
+      context: { client },
+    }),
+  );
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -34,13 +39,55 @@ export function FoundationApp({ client }: FoundationAppProps) {
   );
 }
 
+export type HealthViewProps =
+  | { readonly state: "loading" }
+  | { readonly state: "error"; readonly retry: () => void }
+  | { readonly state: "success"; readonly health: HealthResponse };
+
+export function HealthView(props: HealthViewProps) {
+  if (props.state === "loading") {
+    return (
+      <p role="status" aria-live="polite">
+        Checking database readiness…
+      </p>
+    );
+  }
+  if (props.state === "error") {
+    return (
+      <div role="alert">
+        <p>Database readiness is unavailable.</p>
+        <button type="button" onClick={props.retry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+  return (
+    <p role="status">
+      Database ready <span>(server {props.health.version})</span>
+    </p>
+  );
+}
+
 function FoundationRoute() {
   const { client } = indexRoute.useRouteContext();
+  const health = useQuery({
+    queryKey: ["health"],
+    queryFn: () => client.health(),
+    retry: 1,
+  });
+
   return (
     <main>
       <h1>OpenTeam</h1>
-      <p>Foundation workspace. The compatibility view will appear here.</p>
-      <p data-testid="client-base-url">{client.baseUrl}</p>
+      <p>Foundation compatibility view. This is not the product dashboard.</p>
+      {health.isPending ? (
+        <HealthView state="loading" />
+      ) : health.isError ? (
+        <HealthView state="error" retry={() => void health.refetch()} />
+      ) : (
+        <HealthView state="success" health={health.data} />
+      )}
     </main>
   );
 }
