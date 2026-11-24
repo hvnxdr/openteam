@@ -1,0 +1,29 @@
+{
+  "name": "@openteam/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenTeam command-line application.",
+  "bin": {
+    "openteam": "dist/openteam"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/index.ts --compile --outfile dist/openteam",
+    "check": "vp check",
+    "typecheck": "vp exec tsc -p tsconfig.json --noEmit",
+    "dev": "bun run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:",
+    "@openteam/client": "workspace:*",
+    "@openteam/contracts": "workspace:*",
+    "@openteam/server": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

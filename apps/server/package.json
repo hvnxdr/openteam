@@ -1,0 +1,41 @@
+{
+  "name": "@openteam/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenTeam server runtime.",
+  "type": "module",
+  "exports": {
+    "./runtime": {
+      "types": "./src/runtime.ts",
+      "bun": "./src/runtime.ts"
+    },
+    "./upgrade": {
+      "types": "./src/operations/upgrade.ts",
+      "bun": "./src/operations/upgrade.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts src/upgrade.ts --target=bun --outdir dist",
+    "generate": "drizzle-kit generate",
+    "upgrade": "bun run src/upgrade.ts",
+    "check": "vp check",
+    "typecheck": "vp exec tsc -p tsconfig.json --noEmit",
+    "dev": "bun run src/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:",
+    "@effect/sql-sqlite-bun": "catalog:",
+    "@openteam/client": "workspace:*",
+    "@openteam/contracts": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "drizzle-kit": "catalog:",
+    "oxc-parser": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

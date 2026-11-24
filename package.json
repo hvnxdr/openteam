@@ -2,18 +2,22 @@
   "name": "openteam",
   "version": "0.0.0",
   "private": true,
+  "description": "A self-hosted control plane for tracking team work and coordinating agent runs.",
   "workspaces": [
-    "packages/*",
     "apps/*",
-    "tools/*"
+    "packages/*"
   ],
   "type": "module",
   "scripts": {
-    "ready": "vp check && vp run -r test && vp run -r build",
-    "dev": "vp run website#dev",
-    "prepare": "vp config"
+    "build": "vp run -r build",
+    "check": "vp check && vp run -r typecheck",
+    "dev": "vp run server#dev & vp run web#dev",
+    "ready": "bun run check && bun run test && bun run build",
+    "test": "bun test"
   },
   "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
@@ -28,9 +32,24 @@
     }
   },
   "engines": {
-    "node": ">=22.18.0"
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
   },
   "catalog": {
+    "@effect/platform-bun": "4.1.5",
+    "@effect/sql-sqlite-bun": "4.1.5",
+    "@tanstack/react-query": "5.108.4",
+    "@tanstack/react-router": "1.170.46",
+    "@types/bun": "1.4.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "drizzle-kit": "1.0.0-rc.6",
+    "drizzle-orm": "1.0.0-rc.6",
+    "effect": "4.1.5",
+    "oxc-parser": "0.157.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8001",
     "vite-plus": "1.8.0"
   }

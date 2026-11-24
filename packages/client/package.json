@@ -1,0 +1,35 @@
+{
+  "name": "@openteam/client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenTeam client adapters built on shared contracts.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./effect": {
+      "types": "./src/effect.ts",
+      "bun": "./src/effect.ts",
+      "default": "./dist/effect.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack src/index.ts src/effect.ts --dts --format esm",
+    "check": "vp check",
+    "test": "bun test",
+    "typecheck": "vp exec tsc -p tsconfig.json --noEmit && vp exec tsc -p tsconfig.test.json --noEmit"
+  },
+  "dependencies": {
+    "@openteam/contracts": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
